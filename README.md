@@ -11,5 +11,5 @@
 `make out`
 * Clean:
 `make clean`
-*Module Info:
+* Module Info:
 `make info`
